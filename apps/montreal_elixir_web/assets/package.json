@@ -1,5 +1,6 @@
 {
   "repository": {},
+  "description": "Assets for Montreal Elixir Website",
   "license": "MIT",
   "scripts": {
     "deploy": "brunch build --production",
