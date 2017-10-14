@@ -1,9 +1,13 @@
-defmodule MontrealElixir.SocialFeeds.MeetupApiClient do
+if Mix.env == :test || Mix.env == :travis do
+  Code.require_file("../../../../test/montreal_elixir/social_feeds/api_clients/meetup_api_http_client.exs", __DIR__)
+end
+
+defmodule MontrealElixir.SocialFeeds.Meetup.ApiClient do
   @moduledoc """
   The client for meetup.com API.
   """
 
-  alias MontrealElixir.SocialFeeds.MeetupEvent
+  alias MontrealElixir.SocialFeeds.Meetup.Event
 
   require Logger
 
@@ -14,11 +18,12 @@ defmodule MontrealElixir.SocialFeeds.MeetupApiClient do
   ## Examples
 
       iex> get_next_event()
-      %MeetupEvent{}
+      %Event{}
 
   """
   def get_next_event do
-    get_events(%{scroll: "future_or_past", page: 1})
+    %{scroll: "future_or_past", page: 1}
+    |> get_events()
     |> List.first()
   end
 
@@ -30,18 +35,18 @@ defmodule MontrealElixir.SocialFeeds.MeetupApiClient do
   ## Examples
 
       iex> get_events(%{status: "past,upcoming"})
-      [%MeetupEvent{}, %MeetupEvent{}, ...]
+      [%Event{}, ...]
 
   """
   def get_events(opts \\ %{}) do
-    fetch_meetups(opts)
+    opts
+    |> fetch_meetups()
     |> Enum.map(&to_meetup_event/1)
   end
 
   @http Application.get_env(:montreal_elixir, :meetup_api_client)[:http_client] || :httpc
-  @url "https://api.meetup.com/montrealelixir/events"
   defp fetch_meetups(opts) do
-    url = String.to_charlist(@url <> "?" <> URI.encode_query(opts))
+    url = String.to_charlist(meetup_events_url() <> "?" <> URI.encode_query(opts))
     Logger.info "Meetup API: requesting #{url}"
 
     case @http.request(url) do
@@ -51,12 +56,16 @@ defmodule MontrealElixir.SocialFeeds.MeetupApiClient do
   end
 
   defp to_meetup_event(event_map) do
-    %MeetupEvent{
+    %Event{
       name: event_map["name"],
-      utc_datetime: div(event_map["time"], 1000) |> DateTime.from_unix!(),
+      utc_datetime: event_map["time"] |> div(1000) |> DateTime.from_unix!(),
       venue_name: event_map["venue"]["name"],
       venue_address: event_map["venue"]["address_1"],
       url: event_map["link"]
     }
   end
+
+  defp meetup_events_url, do: base_url() <> "/events"
+
+  def base_url, do: Application.get_env(:montreal_elixir, :meetup_api_client)[:meetup_url]
 end

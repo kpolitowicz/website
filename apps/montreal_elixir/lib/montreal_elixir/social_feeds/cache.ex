@@ -3,6 +3,8 @@ defmodule MontrealElixir.SocialFeeds.Cache do
   Simple map-based cache server with expiring keys.
   """
 
+  @default_expiry_in_msec 600_000
+
   use GenServer
 
   ## Client API
@@ -11,7 +13,27 @@ defmodule MontrealElixir.SocialFeeds.Cache do
     @moduledoc """
     `Cache.Entry` struct capable of holding any value along with expiration timestamp.
     """
+
     defstruct [:value, :expires_at]
+
+    @doc """
+    Returns an Entry with `value` and expiry time based on `expires_in`
+    """
+    def build(value, expires_in) do
+      %Entry{value: value, expires_at: now() + expires_in}
+    end
+
+    @doc """
+    Returns `true` if the entry expired accoring to its `expired_in`.
+    Returns `false` otherwise.
+    """
+    def expired?(entry) do
+      now() >= entry.expires_at
+    end
+
+    defp now do
+      :os.system_time(:millisecond)
+    end
   end
 
   @doc """
@@ -30,9 +52,9 @@ defmodule MontrealElixir.SocialFeeds.Cache do
   The default value is 600 seconds (5 minutes).
   """
   def fetch(key, default_value_function, opts) do
-    expires_in = opts[:expires_in] || 600
+    expires_in = opts[:cache_ttl_in_msec] || @default_expiry_in_msec
     case get(key) do
-      {:not_found} -> set(key, default_value_function.(), expires_in)
+      :not_found -> set(key, default_value_function.(), expires_in)
       {:found, result} -> result
     end
   end
@@ -55,9 +77,9 @@ defmodule MontrealElixir.SocialFeeds.Cache do
   """
   def handle_call({:get, key}, _from, state) do
     value = case Map.fetch(state, key) do
-      :error -> {:not_found}
-      {:ok, result} -> if now() >= result.expires_at do
-        {:not_found}
+      :error -> :not_found
+      {:ok, result} -> if Entry.expired?(result) do
+        :not_found
       else
         {:found, result.value}
       end
@@ -71,13 +93,9 @@ defmodule MontrealElixir.SocialFeeds.Cache do
   Puts the key + value in the state map along with it's expiration timestamp.
   """
   def handle_call({:set, key, value, expires_in}, _from, state) do
-    state = Map.put(state,
-                    key,
-                    %Entry{value: value, expires_at: now() + expires_in})
-    {:reply, value, state}
-  end
+    entry = Entry.build(value, expires_in)
+    state = Map.put(state, key, entry)
 
-  defp now do
-    :os.system_time(:second)
+    {:reply, value, state}
   end
 end
